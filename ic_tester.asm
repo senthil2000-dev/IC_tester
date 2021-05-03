@@ -3,16 +3,16 @@ mov dptr, #instruction
 mov P0, #0
 mov P3, #11110000b
 RS BIT P3.0
-init:
+init:			// Initialising LCD with set of commands
 	clr a
 	movc a, @a + dptr
-	jz break
-	clr RS
-	acall write
+	jz break	// Break the init block and move to jump at the end of command
+	clr RS		// Enabling command mode
+	acall write	// A subroutine used to write data / command to LCD
 	acall delay
 	inc dptr
 	sjmp init
-break:
+break:	 		// Changes to display content
 	mov dptr, #string
 display:
 	clr a
@@ -25,14 +25,14 @@ conda:
 	acall write
 	acall delay
 	sjmp display
-write:
+write:			// Subroutine to write a data/command to LCD
 	mov p2, a
 	clr p3.1
 	setb p3.2
 	acall delay
 	clr p3.2
 	ret
-delay:
+delay:			// subroutine to provide delay
 	mov r3, #255
 here:
 	mov r4, #50 
@@ -40,7 +40,7 @@ here2:
 	djnz r4, here2
 	djnz r3, here
 	ret
-keypad:
+keypad:		 	// Block that gets the number from keyapd and redirects to the specific IC
 	mov p1, #11100000b
 	acall K1
 	mov r2, a
@@ -65,12 +65,10 @@ nan:
 inf_loop:
 	sjmp inf_loop
 cont:
+	setb RS
 	acall write
 	inc dptr
 	sjmp nan
-; p1.1 - p1.4 is output pin
-; p1.5 - p1.7 is  input pin
-;Ensuring no key is pressed at first
 num_0:
 
 	acall K1
@@ -101,6 +99,9 @@ num_8:
 	jz num_86
 	sjmp notvalid
 num_00:
+	clr RS	   
+	mov a, #0C0h
+	acall write
 
 	acall delay
 
@@ -108,19 +109,30 @@ num_00:
 
 	ljmp testing
 num_08:
+	clr RS	   
+	mov a, #0C0h
+	acall write
 	acall delay
 	mov dptr, #ic_7408_in
 	ljmp testing
 num_32:
+	clr RS	   
+	mov a, #0C0h
+	acall write
 	acall delay
 	mov dptr, #ic_7432_in
 	ljmp testing
 num_86:
+	clr RS	   
+	mov a, #0C0h
+	acall write
 	acall delay
 	mov dptr, #ic_7486_in
 	sjmp testing
 
-K1:
+// p1.1 - p1.4 is output pin
+// p1.5 - p1.7 is  input pin
+K1:				// Ensuring no key is pressed at first
 	clr p1.1
 	clr p1.2
 	clr p1.3
@@ -128,21 +140,20 @@ K1:
 	mov a, p1
 	anl a, #11100000b
 	cjne a, #11100000b, K1
-;Checking whether a key is pressed or not
-K2:
-	;acall delay
+
+K2:				// Checking whether a key is pressed or not
 	mov a, p1
 	anl a, #11100000b
 	cjne a, #11100000b, OVER
 	sjmp K2
-;Checking key closure
-OVER:
-	;acall delay
+
+
+OVER:			// Checking key closure
 	mov a, p1
 	anl a, #11100000b
 	cjne a, #11100000b, OVER1
 	sjmp K2
-OVER1:
+OVER1:			// Finding which row the key is pressed
 	acall sett
 	clr p1.4
 	mov a, p1
@@ -183,7 +194,7 @@ row_2:
 	sjmp find
 row_3:
 	mov dptr, #KROW_3
-find:
+find:	   		// Finding which colum the key is pressed
 	rlc a
 	JNC match
 	inc dptr
@@ -209,10 +220,6 @@ repeat:
 	mov b, a
 	mov a,r7	
 	cjne a, #'$', normal
-	clr RS
-	mov a, #0C0h
-	acall write 
-	setb RS
 	mov dptr, #good
 	ret
 normal:	
@@ -227,42 +234,51 @@ normal:
 	sjmp repeat
 fault:
 	xrl a, b
-	mov r0, #-4
+	mov r0, #5
 pin_loc:
-	inc r0
-	rrc a
-	jnc pin_loc
-	clr RS	   
-	mov a, #0C0h
-	acall write 
-	setb RS		
+	dec r0
+	cjne r0, #0, exit
+	sjmp stay_here
+exit:
+	rlc a
+	jnc pin_loc 
+	SETB RS		
 	cjne r0, #4, pin_3
 	mov dptr, #error4
-	ret
+	acall loop
+	sjmp pin_loc
 pin_3:
 	cjne r0, #3, pin_2	
 	mov dptr, #error3
-	ret
+	acall loop
+	sjmp pin_loc
 pin_2:
 	cjne r0, #2, pin_1
 	mov dptr, #error2
-	ret
+	acall loop
+	sjmp pin_loc
 pin_1:
 	mov dptr, #error1
-	ret
+	acall loop
+	sjmp pin_loc
 loop:
+	mov b, a
 	clr a
 	movc a, @a+dptr
 	inc dptr	   
 	jz returning   
 	setb RS		   
 	acall write	   
-	acall delay	   
+	acall delay
+	mov a, b   
 	sjmp loop
 returning:
+	mov a, b
 	ret
 stay_here:
 	sjmp stay_here
+
+// All defined variables
 KROW_0: db '1', '2', '3'
 KROW_1: db '4', '5', '6'
 KROW_2: db '7', '8', '9'
@@ -270,10 +286,10 @@ KROW_3: db '*', '0', '#'
 instruction: db 38h, 0eh, 1h, 6h, 0
 string: db "Enter the ic number: 74", 0
 good:  db "Working good", 0
-error1: db "Pin 1 is Faulty", 0
-error2: db "Pin 2 is Faulty", 0
-error3: db "Pin 3 is Faulty", 0
-error4: db "Pin 4 is Faulty", 0
+error1: db "3 F ", 0
+error2: db "6 F ", 0
+error3: db "10 F ", 0
+error4: db "13 F ", 0
 invalid: db "Invalid number", 0
 ic_7408_in: db 00000000b, 01010101b, 10101010b, 11111111b, '$'		;AND GATE
 
